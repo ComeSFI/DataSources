@@ -1,111 +1,127 @@
-from flask import Flask, render_template, request
+from flask import Flask, request, render_template, jsonify
 import requests
 import logging
-import os
+from pytrends.request import TrendReq
 
-from google.analytics.data_v1beta import BetaAnalyticsDataClient
-from google.analytics.data_v1beta.types import RunReportRequest
-app = Flask(__name__)
+PROPERTY_GA4_ID = '407460020'
+starting_date = "28daysAgo"
+ending_date = "yesterday"
+GOOGLE_URL = "https://www.google.com/"
+GOOGLE_ANALYTICS_URL = "https://analytics.google.com/analytics/web/?pli=1#/p407460020/reports/intelligenthome"
 
+
+
+#os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'ga4-project-402022-9247fce49a1f.json'
+    
+app = Flask(_name_)
 logging.basicConfig(level=logging.DEBUG)
 
 @app.route("/")
+def home_page():
+    google_tag = """
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-67RV40YVNY"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-67RV40YVNY');
+    </script>
+    """
+    return google_tag + "Welcome to My Website"
 
-def hello_world():
- prefix_google = """
- <!-- Google tag (gtag.js) -->
-<script async
-src="https://www.googletagmanager.com/gtag/js?id=G-67RV40YVNY"></script>
-<script>
- window.dataLayer = window.dataLayer || [];
- function gtag(){dataLayer.push(arguments);}
- gtag('js', new Date());
- gtag('config', 'G-67RV40YVNY');
-</script>
- """
- return prefix_google + "Hello World"
+@app.route('/app-dashboard', methods=['GET'])
+def app_dashboard():
+    return """
+    <form method="GET" action="/show-analytics-dashboard">
+        <input type="submit" value="Display App's Analytics Dashboard">
+    </form>
+    <form method="GET" action="/check-analytics-request-cookies">
+        <input type="submit" value="Check Analytics Request Cookies">
+    </form>
+    """
 
+@app.route('/show-analytics-dashboard', methods=['GET'])
+def show_analytics_dashboard():
+    try:
+        response = requests.get(GOOGLE_ANALYTICS_URL)
+        response.raise_for_status()
+        return response.text
+    except requests.exceptions.RequestException as e:
+        return f"Error accessing the Analytics Dashboard: {str(e)}"
+
+@app.route('/check-analytics-request-cookies', methods=['GET'])
+def check_analytics_request_cookies():
+    try:
+        response = requests.get(GOOGLE_ANALYTICS_URL)
+        response.raise_for_status()
+        cookies = response.cookies
+        cookies_html = "<h2>Google Analytics Request Cookies:</h2><ul>"
+        for cookie in cookies:
+            cookies_html += f"<li><strong>{cookie.name}:</strong> {cookie.value}</li>"
+        cookies_html += "</ul>"
+        return cookies_html
+    except requests.exceptions.RequestException as e:
+        return f"Error checking Google Analytics Request Cookies: {str(e)}"
 
 @app.route("/logger", methods=['GET', 'POST'])
-def log():
-    log_msg = "log(obi sur le dance floor)"
+def log_page():
+    log_msg = "You are connected to the log page"
     app.logger.info(log_msg)
 
     if request.method == 'POST':
         text_from_textbox = request.form['textbox']
-
         browser_log = f"""
         <script>
-            console.log(' Vous êtes bien connectés à la page des logs');
-            console.log('Box : {text_from_textbox}');
+            console.log('Web browser console: You are connected to the log page');
+            console.log('Text from the text box: {text_from_textbox}');
         </script>
         """
     else:
         browser_log = """
         <script>
-            console.log('Vous êtes bien connectés à la page des logs');
+            console.log('Web browser console: You are connected to the log page');
         </script>
         """
-    textbox_form = """
+
+    form = """
     <form method="POST">
         <label for="textbox">Text Box :</label><br>
         <input type="text" id="textbox" name="textbox"><br><br>
-        <input type="submit" value="Soumettre">
-        <button type="button" onclick="makeGoogleRequest()">Faire une requête Google</button>
+        <input type="submit" value="Submit">
+        <button type="button" onclick="makeGoogleRequest()">Make a Google Request</button>
     </form>
     """
+    return log_msg + browser_log + form
 
-    return log_msg + browser_log + textbox_form
-
-GOOGLE_URL = "https://www.google.com/"
-GOOGLE_ANALYTICS_URL = "https://analytics.google.com/analytics/web/?pli=1#/p407460020/reports/intelligenthome"
-
-@app.route('/google-request', methods=['GET'])
-def google_request():
-    # Render a form with buttons
-    return """
-    <form method="GET" action="/perform-google-analytics-request">
-        <input type="submit" value="Display Google Analytics Dashboard of this App">
-    </form>
-    <form method="GET" action="/check-google-analytics-cookies">
-        <input type="submit" value="Check Google Analytics Request Cookies">
-    </form>
-    """
-
-@app.route('/perform-google-analytics-request', methods=['GET'])
-def perform_google_analytics_request():
+@app.route('/perform-google-request-cookies', methods=['GET'])
+def perform_google_request_cookies():
     try:
         response = requests.get(GOOGLE_ANALYTICS_URL)
-        response.raise_for_status()  # Raise an exception for HTTP errors
-
-        return response.text
+        response.raise_for_status()
+        cookies = response.cookies
+        return render_template('cookies.html', cookies=cookies)
     except requests.exceptions.RequestException as e:
-        return f"Error with GAnalytics request: {str(e)}"
+        return f"Error making Google Analytics Cookies request: {str(e)}"
 
+@app.route('/chart_data')
+def chart_data():
+    pytrends = TrendReq(hl='en-US', tz=360)
+    keywords = ["Marvel", "DC Comics"]
+    pytrends.build_payload(keywords, timeframe='today 12-m', geo='US')
+    interest_over_time_df = pytrends.interest_over_time()
 
-@app.route('/fetch-google-analytics-data', methods=['GET'])
+    data = {
+        'dates': interest_over_time_df.index.strftime('%Y-%m-%d').tolist(),
+        'Marvel': interest_over_time_df['Marvel'].tolist(),
+        'DC': interest_over_time_df['DC Comics'].tolist()
+    }
 
-def fetch_google_analytics_data():
+    return jsonify(data)
 
-    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'ga4-project-402022-9247fce49a1f.json'
-    PROPERTY_GA4_ID = '407460020'
-    starting_date = "28daysAgo"
-    ending_date = "yesterday"
-    client = BetaAnalyticsDataClient()
-    
-    def get_visitor_count(client, property_id):
-        request = RunReportRequest(
-            property=f"properties/{property_id}",
-            date_ranges=[{"start_date": starting_date, "end_date": ending_date}],
-            metrics=[{"name": "activeUsers"}]
-        )
-        response = client.run_report(request)
-        return response
+@app.route('/chart_data_render')
+def index():
+    return render_template('chart_data.html')
 
-    response = get_visitor_count(client, PROPERTY_GA4_ID)
-    if response and response.row_count > 0:
-        metric_value = response.rows[0].metric_values[0].value
-    else:
-        metric_value = "No data" 
-
-    return f'active visitors : {metric_value}'
+if _name_ == "_main_":
+    app.run(debug=True)
