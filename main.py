@@ -1,7 +1,10 @@
-from flask import Flask, request, render_template, jsonify
+from flask import Flask, request, render_template, jsonify,send_file
 import requests
 import logging
 from pytrends.request import TrendReq
+import time
+from collections import Counter
+import matplotlib.pyplot as plt
 
 PROPERTY_GA4_ID = '407460020'
 starting_date = "28daysAgo"
@@ -13,7 +16,7 @@ GOOGLE_ANALYTICS_URL = "https://analytics.google.com/analytics/web/?pli=1#/p4074
 
 #os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'ga4-project-402022-9247fce49a1f.json'
     
-app = Flask(_name_)
+app = Flask(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
 @app.route("/")
@@ -121,7 +124,89 @@ def chart_data():
 
 @app.route('/chart_data_render')
 def index():
-    return render_template('chart_data.html')
+    return render_template('chart_trend_data.html')
 
-if _name_ == "_main_":
+# Decorator to log execution time
+def timeit(func):
+    def timed(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        execution_time = end_time - start_time
+        return execution_time  # Return the execution time directly
+
+    return timed
+
+# Download Shakespeare's text
+def download_shakespeare_text():
+    url = "https://ocw.mit.edu/ans7870/6/6.006/s08/lecturenotes/files/t8.shakespeare.txt"
+    response = requests.get(url)
+    return response.text
+
+# Word count using a dictionary
+@timeit
+def word_count_dictionary(text):
+    words = text.split()
+    word_count = {}
+    for word in words:
+        word = word.lower()
+        if word.isalpha():
+            if word in word_count:
+                word_count[word] += 1
+            else:
+                word_count[word] = 1
+    return word_count
+
+# Word count using Counter
+@timeit
+def word_count_counter2(text):
+    words = text.split()
+    words = [word.lower() for word in words if word.isalpha()]
+    word_count = Counter(words)
+    return word_count
+
+@app.route('/word_count', methods=['GET'])
+def count_words():
+    shakespeare_text = download_shakespeare_text()
+    
+    word_count_dict_times = [word_count_dictionary(shakespeare_text) for _ in range(100)]
+    word_count_counter_times = [word_count_counter2(shakespeare_text) for _ in range(100)]
+    
+    # Calculate average execution times
+    print(word_count_counter_times[0])
+
+    average_dict_time = sum(word_count_dict_times) / len(word_count_dict_times)
+    average_counter_time = sum(word_count_counter_times) / len(word_count_counter_times)
+    
+    # Calculate variance of execution times
+    variance_dict_time = sum((t - average_dict_time) ** 2 for t in word_count_dict_times) / len(word_count_dict_times)
+    variance_counter_time = sum((t - average_counter_time) ** 2 for t in word_count_counter_times) / len(word_count_counter_times)
+    
+    methods = ['Dictionary', 'Counter']
+    average_times = [average_dict_time, average_counter_time]
+    
+    plt.figure(figsize=(8, 6))
+    plt.bar(methods, average_times)
+    plt.title('Mean Execution Time')
+    plt.xlabel('Method')
+    plt.ylabel('Time (s)')
+    
+    # Save the plot as an image
+    plt.savefig('execution_time_plot.png')
+    
+    # Close the plot to free up resources
+    plt.close()
+    
+    
+    # Serve the image to the client
+    
+    # return jsonify({
+    #     "average_dict_time": average_dict_time,
+    #     "average_counter_time": average_counter_time,
+    #     "variance_dict_time": variance_dict_time,
+    #     "variance_counter_time": variance_counter_time
+    # })
+    return send_file('execution_time_plot.png', mimetype='image/png')
+
+if __name__ == "__main__":
     app.run(debug=True)
